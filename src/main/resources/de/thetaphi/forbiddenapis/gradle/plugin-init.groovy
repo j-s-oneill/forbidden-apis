@@ -18,9 +18,6 @@
 
 import java.lang.reflect.Modifier;
 import org.gradle.api.plugins.JavaBasePlugin;
-import org.gradle.util.GradleVersion;
-
-final boolean TASK_AVOIDANCE_AVAILABLE = GradleVersion.current() >= GradleVersion.version("4.9");
 
 project.plugins.apply(JavaBasePlugin.class);
 
@@ -36,8 +33,7 @@ def extensionProps = CheckForbiddenApisExtension.class.declaredFields.findAll{ f
 }*.name;
 
 // Create a convenience task for all checks (this does not conflict with extension, as it has higher priority in DSL):
-def forbiddenTask = TASK_AVOIDANCE_AVAILABLE ? project.tasks.register(FORBIDDEN_APIS_TASK_NAME) : project.tasks.create(FORBIDDEN_APIS_TASK_NAME)
-forbiddenTask.configure {
+def forbiddenTask = project.tasks.create(FORBIDDEN_APIS_TASK_NAME) {
   description = "Runs forbidden-apis checks.";
   group = JavaBasePlugin.VERIFICATION_GROUP;
 }
@@ -45,10 +41,7 @@ forbiddenTask.configure {
 // Define our tasks (one for each SourceSet):
 project.sourceSets.all{ sourceSet ->
   def getSourceSetClassesDirs = { sourceSet.output.hasProperty('classesDirs') ? sourceSet.output.classesDirs : project.files(sourceSet.output.classesDir) }
-  String sourceSetTaskName = sourceSet.getTaskName(FORBIDDEN_APIS_TASK_NAME, null);
-  def sourceSetTask = TASK_AVOIDANCE_AVAILABLE ? project.tasks.register(sourceSetTaskName, CheckForbiddenApis.class) :
-          project.tasks.create(sourceSetTaskName, CheckForbiddenApis.class);
-  sourceSetTask.configure { task ->
+  project.tasks.create(sourceSet.getTaskName(FORBIDDEN_APIS_TASK_NAME, null), CheckForbiddenApis.class) { task ->
     description = "Runs forbidden-apis checks on '${sourceSet.name}' classes.";
     conventionMapping.with{
       extensionProps.each{ key ->
@@ -68,12 +61,9 @@ project.sourceSets.all{ sourceSet ->
       }
     }
     outputs.upToDateWhen { true }
-  }
-  forbiddenTask.configure {
-    dependsOn(sourceSetTask)
+    forbiddenTask.dependsOn(task);
   }
 }
 
 // Add our task as dependency to chain
-def checkTask = TASK_AVOIDANCE_AVAILABLE ? project.tasks.named(JavaBasePlugin.CHECK_TASK_NAME) : project.tasks.getByName(JavaBasePlugin.CHECK_TASK_NAME);
-checkTask.configure { it.dependsOn(forbiddenTask) };
+project.tasks[JavaBasePlugin.CHECK_TASK_NAME].dependsOn(forbiddenTask);
